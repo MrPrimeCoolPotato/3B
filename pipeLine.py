@@ -2,62 +2,106 @@ from OAKWrapper import *
 import cv2
 import IMPP
 import numpy as np
-from mathForCord import *
+#f#rom mathForCord import *
+import time
 
-#Inputs 
-cam = OAKCamColorDepth()
-frame = cam.getFrame()
-cut = frame[72:722, 327:1228]
+def CalcX(x, y):
+    a = 0.0124
+    b = 0.4465
+    c = 207.5664
+
+    xCord = (a*x)+(b*y)+c
+    return xCord
 
 
-#Pipeline, Billed behandling 
-pipeline = IMPP.PostProcessingPipeline([IMPP.ConvertRGB2HSV(),
-                                        IMPP.HSVThreshold(lowerBound=np.array([0, 0, 0]), upperBound=np.array([64, 255, 253]), outputMask=True),
-                                        IMPP.DetectContours(mode=cv2.RETR_LIST, draw=False),
-                                        IMPP.DetectShapes(printResult=True)
+
+
+def CalcY(x, y):
+
+    a = 0.4664
+    b = -0.0095
+    c = -242.5289
+
+    yCord = (a*x)+(b*y)+c
+    return yCord
+
+
+
+
+def pipeLine(cam, findObject, controlObject):
+    #Inputs 
+     #standart cut
+
+    frame = cam.getFrame()
+    cut1 = frame[72:722, 327:1228]
+    cut2 = frame[424:532, 492:705]
+
+    #Pipeline, Billed behandling 
+    pipeline = IMPP.PostProcessingPipeline([ IMPP.AverageBlur(7),
+                                        IMPP.ConvertRGB2HSV(),                                    
+                                        IMPP.HSVThreshold(lowerBound=np.array([24, 146, 0]), upperBound=np.array([43, 255, 135]), outputMask=True, invert= True),
+                                        IMPP.Dilate(3,3),
+                                        IMPP.Erode(3,3),
+                                        IMPP.DetectContours(mode=cv2.RETR_LIST),
+                                        IMPP.DetectShapes(epsilon= 0.1, printResult=False)
                                         ])
-
-pipelineOutput = pipeline.run(cut)
-
-#Fejlhåndtering
-if len(pipelineOutput) == 0:
-    raise ValueError("No object")
-
-firstShape = pipelineOutput[0] 
-
-#Beregn arealet af det første objekt
-Area = cv2.contourArea(firstShape.contour)
-Orientation = cv2.minAreaRect(firstShape.contour)
-
-#Beregn Robot koordinater ud fra Billed koordinater
-y = CalcY(firstShape.center[0], firstShape.center[1])
-x = CalcX(firstShape.center[0], firstShape.center[1])
-
-#Output from Pipeline
-def Output():
-    return [x, y, Orientation, Area]
     
+    pipelineOutput1 = pipeline.run(cut1)
+    pipelineOutput2 = pipeline.run(cut2)
+       
+    cv2.imshow("billed", cut1)
 
-'''if input() == 'debug':
-    #Debug
-    print("x", x, "y", y)
+    #Fejlhåndtering
+    if findObject:
+        firstShape = pipelineOutput1[0] 
+        
+        #Beregn arealet af det første objekt
+        Area = cv2.contourArea(firstShape.contour)
+       
+        myRotatedRect = cv2.minAreaRect(firstShape.contour)
 
-    shapeImg = cut.copy() 
-    for shape in pipelineOutput: 
-        cv2.drawContours(shapeImg , [shape.contour], -1, (0, 255, 0), 2) 
-        cv2.putText(shapeImg, str(shape.points), shape.center, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255, 2)
-        shape1Area = cv2.minAreaRect(shape.contour)
-        #cv2.drawContours(shapeImg, [shape1Area], -1, (0, 255, 0), 2)
-        box = cv2.boxPoints(shape1Area)
-        box = np.int0(box)
-        cv2.drawContours(shapeImg, [box], 0, (0,0,255),2)
-
-
-    cv2.imshow('drawn', shapeImg)
+        Orientation = myRotatedRect[2]
+        if myRotatedRect[0] < myRotatedRect[1]:
+             Orientation = Orientation - 90
     
-    if cv2.waitKey(0) == ord('q'):
-        cv2.destroyAllWindows()
-   ''' 
+        
+        #Beregn Robot koordinater ud fra Billed koordinater
+        print('FIRSTSHAPE: ', firstShape.center)
+        y = CalcY(firstShape.center[0], firstShape.center[1])
+        x = CalcX(firstShape.center[0], firstShape.center[1])
+        Area2=1
+    elif len(pipelineOutput1) == None:
+        Area=1
+        x=0
+        y=0
+        Orientation=0
+        Area2=1
+        raise ValueError("No object")
 
 
+
+    if controlObject:
+        controlShape = pipelineOutput2[0] 
+        #Beregn arealet af det kontrol objekt
+        Area2 = cv2.contourArea(controlShape.contour)
+        x=0
+        y=0
+        Orientation=0
+        Area=1
+
+    elif len(pipelineOutput2) == None:
+        Area2=1
+        Area=1
+        x=0
+        y=0
+        Orientation=0
+        Area2=1
+        raise ValueError("No object")
+
+    
+    cv2.waitKey(1)
+
+    #return [0,     1,               2,          3,            4]
+    return [int(x), int(y), int(Orientation), int(Area), int(Area2)]
+    
 
